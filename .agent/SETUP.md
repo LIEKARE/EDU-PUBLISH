@@ -59,19 +59,35 @@ ls \
 依次检查，逐项报告结果：
 
 ```bash
-docker --version
+# 2a. 检查 docker 命令是否存在
+command -v docker > /dev/null 2>&1 && echo "DOCKER_INSTALLED" || echo "DOCKER_NOT_FOUND"
+
+# 2b. 检查 Docker daemon 权限是否可用（仅当 docker 已安装时执行）
+docker info > /dev/null 2>&1 && echo "DAEMON_OK" || echo "NEED_PERMISSION"
+
+# 2c. 检查 docker compose
 docker compose version
-docker info > /dev/null 2>&1 && echo "OK" || echo "NEED_PERMISSION"
+
+# 2d. 检查项目配置文件
 ls config/site.yaml config/subscriptions.yaml config/widgets.yaml
 ```
 
-**如果 Docker 不存在**，执行安装：
+> ⚠️ 注意区分"Docker 未安装"和"Docker 已安装但无权限"两种情况，处理方式不同。
+
+**如果 Docker 未安装**（`DOCKER_NOT_FOUND`），执行安装：
 
 ```bash
 # Debian/Ubuntu
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER
 # 提醒用户：需要重新登录 shell 以生效，或执行 newgrp docker
+```
+
+**如果 Docker 已安装但无权限**（`NEED_PERMISSION`），将当前用户加入 docker 组：
+
+```bash
+sudo usermod -aG docker $USER
+# 提醒用户：需要重新登录 shell 或执行 newgrp docker
 ```
 
 **如果 docker compose 不可用**，检查是否有独立的 `docker-compose`（V1）：
@@ -135,6 +151,12 @@ networks:
 
 > **关键挂载**：`./archive:/AstrBot/data/archive` 使 AstrBot 插件写入的归档直接落进项目的 `archive/` 目录。
 
+> ⚠️ **权限提醒**：AstrBot 容器以 root 运行，写入 bind mount 后宿主机文件变为 root 所有者。首次启动后建议执行：
+> ```bash
+> sudo chown -R $USER:$USER data archive
+> ```
+> 否则后续宿主机上编辑配置文件或读取归档时可能遇到 `EACCES` 权限错误。
+
 ---
 
 ## Step 4：拉取镜像并启动容器
@@ -154,8 +176,10 @@ docker compose ps
 NapCat 启动后会在日志中输出 QQ 登录二维码。
 
 ```bash
-docker logs -f napcat 2>&1 | head -100
+docker logs --tail 100 napcat
 ```
+
+> ⚠️ 不要使用 `docker logs -f ... | head`，这种组合对 agent/CI 场景不稳定，容易卡住。优先使用 `--tail` 或 `--since`。
 
 **告诉用户**：
 > 请用手机 QQ 扫描上面日志中的二维码完成登录。登录成功后日志会显示账号信息。
@@ -185,13 +209,42 @@ docker logs astrbot 2>&1 | tail -20
 告诉用户：
 
 > AstrBot 控制台已就绪：http://localhost:6185
-> NapCat 使用 `MODE=astrbot` 启动，WebSocket 通信应已自动配置。
-> 如果需要手动配置，NapCat 的 WebSocket 地址为 `ws://napcat:6099`（容器间通信用容器名）。
+
+> ⚠️ NapCat 使用 `MODE=astrbot` 启动后会主动连接 `ws://astrbot:6199/ws`，但 **AstrBot 默认并没有启用 OneBot v11 平台配置**，因此 NapCat 会遇到 `ECONNREFUSED`。
+
+**必须手动补充 AstrBot 平台配置**：
+
+检查 `data/cmd_config.json` 中的 `platform` 数组，如果为空，需要添加 OneBot v11 反向 WebSocket 配置：
+
+```bash
+# 查看当前配置
+docker exec astrbot cat /AstrBot/data/cmd_config.json | python3 -m json.tool 2>/dev/null || \
+docker exec astrbot cat /AstrBot/data/cmd_config.json
+```
+
+在 `data/cmd_config.json` 的 `platform` 数组中添加以下配置项（如果不存在）：
+
+```json
+{
+  "id": "default",
+  "type": "aiocqhttp",
+  "enable": true,
+  "ws_reverse_host": "0.0.0.0",
+  "ws_reverse_port": 6199,
+  "ws_reverse_token": ""
+}
+```
+
+添加后重启 AstrBot：
+
+```bash
+docker restart astrbot
+```
 
 **验证通信**：
 
 ```bash
-docker logs astrbot 2>&1 | grep -i -E "connect|adapter|websocket|napcat" | tail -10
+docker logs --since 2m astrbot 2>&1 | grep -i -E "connect|adapter|websocket|napcat" | tail -10
 ```
 
 如果连接失败，参阅：
@@ -228,7 +281,20 @@ docker logs astrbot 2>&1 | grep -i -E "QQtoLocal|qq2local|plugin.*load" | tail -
 
 ### 7b. 配置插件参数
 
-插件配置通过 AstrBot 控制台完成：`http://localhost:6185` → 「插件管理」→ `astrbot-QQtoLocal` → 「配置」。
+插件配置有两种方式：
+
+**方式 A — 控制台配置（适合人类用户）**：
+
+`http://localhost:6185` → 「插件管理」→ `astrbot-QQtoLocal` → 「配置」。
+
+**方式 B — 直接编辑配置文件（适合 agent 自动化）**：
+
+配置文件路径为 `data/config/astrbot-QQtoLocal_config.json`（宿主机）或容器内 `/AstrBot/data/config/astrbot-QQtoLocal_config.json`。
+
+> ⚠️ **权限提醒**：AstrBot 容器写入 `data/` 目录后，宿主机上的文件可能变成 root 所有者。如果编辑配置文件时遇到 `EACCES` 权限错误，需要先修复权限：
+> ```bash
+> sudo chown -R $USER:$USER data archive
+> ```
 
 **需要向用户索取**：
 
@@ -238,7 +304,7 @@ docker logs astrbot 2>&1 | grep -i -E "QQtoLocal|qq2local|plugin.*load" | tail -
 
 > 请提供需要监听的 QQ 群号列表。
 
-**agent 应自动设置以下值**，无需询问用户：
+**agent 应自动设置以下值**（配置落点：`data/config/astrbot-QQtoLocal_config.json`），无需询问用户：
 
 | 字段 | 设置值 | 说明 |
 |------|--------|------|
@@ -248,6 +314,12 @@ docker logs astrbot 2>&1 | grep -i -E "QQtoLocal|qq2local|plugin.*load" | tail -
 | `archive_asset_max_mb` | `20` | 单个资源文件大小上限（MB） |
 
 > **重要**：`archive_root` 默认值是 `/AstrBot/data/qq2tg_archive`，必须改为 `/AstrBot/data/archive` 才能与 `docker-compose.yml` 中的挂载路径对应。
+
+修改配置文件后重启 AstrBot 使配置生效：
+
+```bash
+docker restart astrbot
+```
 
 ### 7c. 可选：跨平台转发
 
@@ -281,9 +353,7 @@ docker exec astrbot rm -rf /AstrBot/data/archive/test
 
 **告诉用户**：
 
-> 请在已配置监听的 QQ 群中发送 2-3 条测试消息，例如：
-> - "测试消息 1：部署验证"
-> - "测试消息 2：归档测试"
+> 请在已配置监听的 QQ 群中发送 2-3 条任意消息（内容不限）。
 
 发送后，依次检查：
 
@@ -293,11 +363,16 @@ docker exec astrbot rm -rf /AstrBot/data/archive/test
 docker logs napcat --since 2m 2>&1 | grep -i -E "message|recv|group" | tail -20
 ```
 
-### 8b. AstrBot 处理消息
+### 8b. AstrBot 插件处理消息
 
 ```bash
-docker logs astrbot --since 2m 2>&1 | grep -i -E "message|event|recv|handler" | tail -20
+docker logs astrbot --since 2m 2>&1 | grep -i -E "message|event|recv|handler|in_source|归档" | tail -20
 ```
+
+**验收关键指标**（不依赖具体消息文本）：
+- 日志中出现目标群号 → 群号命中成功
+- 日志中出现 `in_source=True` → 插件识别到来源群
+- 日志中出现 `归档成功` → 归档流程完成
 
 ### 8c. 本地归档落盘
 
@@ -307,8 +382,13 @@ ls -la archive/$TODAY/ 2>/dev/null || echo "Today's archive directory not yet cr
 cat archive/$TODAY/messages.md 2>/dev/null | tail -20
 ```
 
-- 成功标志：`archive/YYYY-MM-DD/` 目录出现，`messages.md` 包含测试消息
-- 失败标志：目录未创建 → 插件 `archive_root` 配置错误或 `enable_markdown_archive` 未开启
+**成功标志**：
+- `archive/YYYY-MM-DD/` 目录出现
+- `messages.md` 有新增记录（内容与用户发送的消息对应）
+
+**失败标志及排查**：
+- 目录未创建 → 检查插件 `archive_root` 配置是否为 `/AstrBot/data/archive`，以及 `enable_markdown_archive` 是否为 `true`
+- 目录存在但 `messages.md` 为空 → 检查 `banshi_group_list` 是否包含目标群号
 
 ---
 
