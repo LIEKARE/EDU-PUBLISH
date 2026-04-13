@@ -124,3 +124,30 @@ html.theme-switching *::after {
   outline: none !important;
 }
 
+/* 列表封面图：容器查询版，响应列表项自身宽度而非视口宽度 */
+.article-list-cover {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .article-list-cover {
+    display: block;
+  }
+}
+
+@supports (container-type: inline-size) {
+  .article-list-item {
+    container-type: inline-size;
+  }
+
+  .article-list-cover {
+    display: none;
+  }
+
+  @container (min-width: 56rem) {
+    .article-list-cover {
+      display: block;
+    }
+  }
+}
+
