@@ -38,7 +38,7 @@ seo:
 
 # === Automation ===
 # Set to false if this repo should not deploy through GitHub Actions.
-github_actions_enabled: false
+github_actions_enabled: true
 
 # === Palette ===
 palette:
