@@ -1,16 +1,17 @@
 ---
-id: "20260418-unknown-01"
-school_slug: "unknown"
-title: ""英"你而来，四六级通关——阳光成长训练营分享会"
+id: "20260418-info-engineering-01"
+school_slug: "info-engineering"
+title: 四六级通关——阳光成长训练营分享会
 description: >-
   外国语学院与公费师范生院优秀学生分享四六级听力、阅读、写作、翻译备考经验。3月24日14:30惟义楼W7201，名额12人，需提前填表并赣青二课报名获技能特长类绩点。
+
 published: "2026-04-18T13:27:28+08:00"
 category: "二课活动"
 tags: ["四六级", "备考分享", "阳光成长训练营", "绩点"]
 start_at: "2026-03-24T14:30:00+08:00"
 end_at: "2026-03-24T16:30:00+08:00"
 source:
-  channel: "未知来源"
+  channel: "学院通知"
   sender: "Lieka"
 attachments: []
 ---
