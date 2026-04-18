@@ -21,6 +21,11 @@ schools:
         enabled: true
         order: 1
         icon: /img/unit-icon-info-engineering.svg
+      - title: Summarize、情风
+        enabled: true
+        order: 2
+        icon: /img/unit-icon-info-engineering.svg
+        number: 877798374
 
   - slug: literature
     name: 文学院
